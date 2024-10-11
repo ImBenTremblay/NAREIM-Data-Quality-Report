@@ -1,4 +1,111 @@
 ## NAREIM Data Quality Program ##
 
-- Hey everyone- running into some tech issues with uploading this script, but i'll have the entire program loaded in before the end of 10_09_2024
-- Ben Tremblay
+
+# 1a) Load Python Packages
+import snowflake.connector
+import pandas as pd
+import datetime
+import secrets
+
+# 1b) Connect to data (csv, excel, snowflake... )
+Asset_GL_Balance = pd.read_csv(r'\\files|shared\Data Sources\Asset_GL_BaLance.csv')
+Property_History = pd. read_excel(r'\\files\shared\Data Sources\Property_History.xlsx')
+
+Snowflake_connection = snowflake. connector.connect(
+  account=account, 
+  usersuser, 
+  authenticator=authenticator, 
+  role=role, 
+  warehouse=warehouse, 
+  database=database, 
+  schema=schema)
+
+# 2) Add DQ Rules
+Land_Attribute_Accuracy = """
+    SELECT Entity_ ID,
+    Entity_ Status,
+    'Land Attribute Accuracy' AS DQ_Rule,
+    'Check Floors, Units and Year Built' AS Condition_1,
+    Transaction_Lead AS Condition_2
+    FROM Property_History
+    WHERE Property_Type = 'Land'
+    AND (Floors <> 0 OR Units <> 0 OR Year_Built <> 0); """
+
+Property_Attribute_Completeness = """ 
+    SELECT Entity_ ID,
+    Entity_Status，
+    'Property Attribute Completeness' AS DQ_Rule,
+    'Check Floors, Units and Year Built' AS Condition 1,
+    Transaction_ Lead AS Condition 2
+    FROM Property_History
+    WHERE Property_Type NOT LIKE 'Land'
+    AND (Floors IS NULL OR Units IS NULL OR SqFt IS NULL OR NRA IS NULL OR Year_Built IS NULL); """
+
+NRA_Accuracy = """
+    SELECT Entity_ID，
+    Entity_status,
+    'NRA Accuracy' AS DQ_Rule,
+    'NRA Greater than SqFt' AS Condition 1, 
+    TotaL_NRA AS Condition_2
+    FROM Property_History
+    WHERE TotaL_NRA › Total_SQFT; """
+
+3a) Execute DQ Rules (create unique dataframes)
+Land_Attribute_Accuracy = pd.read_sql(Land_Attribute_Accuracy, Snowflake_Connection)
+Property_Attribute_Completeness = pd.read_sql(Property_Attribute_Completeness, Snowflake_Connection)
+NRA_Accuracy = pd.read_sql(NRA_Accuracy, Snowflake_connection)
+
+# 3b) Combine issue records from DQ Rules into a single dataframe
+Today_DQ_Results = pd.concat([Land_Attribute_Accuracy,
+                              Property_Attribute_Completeness,  
+                              NRA_Accuracy])
+
+# 4a) Get current date in the format MMDDYY
+current_date = datetime.datetime.now().strftime ('%m%d%y')
+
+4b) Add a new column called "Unique_ID" with a unique identifier for each row
+Today_DQ_Results ['Unique_ID'] = [secrets.token_hex(3) + '_' + current_date for _ in range(len(Today_DO_Results))]
+
+# 5) Create a new column called "Date_Identified" and set its value to today's date
+Today_DQ_Results['Date_Identified'] = pd. Timestamp.now().strftime('%Y-%m-%d')
+
+# 6a) Load in yesterday's DQ Results
+Prior_Day_D Results = pd. read_excel (r'\\files\shared\Data\DQ_Report.xlsx')
+
+# 6b) Separate closed/historic DQ issues from current/open issues in Prior_Day PQ Results
+Open_Issues = Prior_Day_DQ_Results[Prior_Day_DQ_Results['Date_Resolved'].isna()]
+closed_Issues = Prior_Day_DQ_Results[Prior_Day_DQ_Results['Date_Resolved'].notna()]
+
+# 7) Merge Open Issues to Today's DQ Results (outer join)
+temp_table = pd.merge(Prior_Day_DQ_Results, Today_DQ_Results, on=['ENTITY_ID", 'DQ_Rule', 'CONDITION_1'], how = 'outer')
+
+# 8) Add 'Date Resolved' field, for issues that have been resolved (no longer showing on Today's DQ Results)
+from datetime import date
+temp_table['date_resolved_2'] = temp_table.apply(lambda row: row['Date_Resolved']
+                                                  if pd.notna(row['Date_Resolved'])
+                                                  else date.today() if pd.isna(row['Unique_ID_y'])
+                                                  else None, axis=1)
+
+# 9a) Fill in values from new da results
+temp_table[[Unique_ID_x'].fillna(temp_table['Unique_ID_y'], inplace=True) 
+temp_table['Entity_Status_x'].fillna(temp_table['Entity_Status_y'], inplace=True) 
+temp_table['Date_Identified_x'].fillna(temp_table['Date_Identified_y'], inplace-True) 
+temp_table['Condition_2_x'].fillna(temp_table['Condition_2_y'], inplace=True)
+
+# 9b) Filter table to only keep selected fields
+temp_table = temp_table[['Unique_ID_x', 'Entity_ID_x',
+                        'Entity_Status_x', DQ_Rule_x',
+                        'Condition_1_x', Date_Identified_x', 
+                        'Date_Resolved']]
+
+# 10a) Concatenate temp_table with Closed / Resolved Issues (this keeps a running history log)
+final_table = pd.concat([temp_table, Closed_Issues], ignore_index=True)
+
+# 10b) Export DQ Report to excel, or publish to a Dashboard
+export_path = r'lIfiles/sharedlData'...
+final_table.to_excel("Data_Quality_Report.xlsx")
+
+
+
+
+
